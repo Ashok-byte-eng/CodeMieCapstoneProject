@@ -1,161 +1,243 @@
-# Implementation Plan: Advanced Filters for Travel Accommodation Search
+# Implementation Plan: Advanced Filters (Amenities, Property Type, Review Score)
 
-Repo: https://github.com/Ashok-byte-eng/CodeMieCapstoneProject
+Below plan is based on Jira User Stories for the travel accommodation search application's advanced filters:
+- **EPMCDMETST-57138** — Amenities filter (Wi‑Fi, Breakfast included)
+  - **EPMCDMETST-57139** — Backend task: support filtering by amenities
+  - **EPMCDMETST-57140** — QA task: verify Amenities filter scenarios
+- **EPMCDMETST-57141** — Property Type filter (Hotel, Villa)
+  - **EPMCDMETST-57142** — Backend task: support filtering by property type
+  - **EPMCDMETST-57143** — UI task: add Property Type filter controls
+  - **EPMCDMETST-57144** — QA task: verify Property Type filter scenarios
+- **EPMCDMETST-57145** — Review Score filter (threshold: 9+, 8+, 7+)
+  - **EPMCDMETST-57146** — Backend task: support filtering by review score
+  - **EPMCDMETST-57147** — UI task: add Review Score filter controls
+  - **EPMCDMETST-57148** — QA task: verify Review Score filter scenarios
+
+Repo: https://github.com/Ashok-byte-eng/CodeMieCapstoneProject  
 Branch: `feature/advanced-filters-implementation-plan`
 
-Scope (Jira User Stories):
-- **EPMCDMETST-57128** — Amenities filter (Wi‑Fi, Breakfast included)
-- **EPMCDMETST-57129** — Property Type filter (Hotel, Villa)
-- **EPMCDMETST-57130** — Review Score threshold filter (9+, 8+, 7+)
+Point scale: Fibonacci (1, 2, 3, 5, 8, 13).
 
-Point scale: Fibonacci (1, 2, 3, 5, 8).
-
-Assumptions:
-- Current search already supports destination, travel dates, passengers, sorting and pagination.
-- Filters are combinable: **AND across categories**; within category: **Amenities = AND**, **Property Type = OR**, **Review Score = single threshold**.
-- When Review Score threshold is set, **unrated (null score) properties are excluded**.
+Assumptions / Principles
+- Existing search supports destination, dates, passengers, sorting, and pagination.
+- Filters are combinable with clear logic:
+  - **AND across categories**: amenities & propertyType & reviewScore all apply together.
+  - **Amenities = AND within category** (property must match all selected amenities).
+  - **Property Type = OR within category** (hotel OR villa).
+  - **Review Score = single threshold** (e.g., 8+).
+- When a review score threshold is applied, properties with `null`/no score are **excluded**.
+- Filter state persists across pagination and sorting (preferably via URL query params).
+- When filters yield no results, user sees an empty state with a clear-filters action.
 
 ---
 
-## 1) Phase breakdown
+## 1) Phase breakdown (Analysis, Design, Development, Testing, Deployment)
 
-### Phase A — Analysis
+### Phase 1 — Analysis
 
-| ID | Task | Owner | SP | Dependencies / Risks | Deliverables |
+**Milestone:** Requirements clarified + feasibility confirmed + test strategy outlined.
+
+| Task ID | Task | Owner(s) | Est. (SP) | Outputs | Notes / Jira linkage |
 |---|---|---|---:|---|---|
-| A1 | Review current search API + FE flow (query params, pagination/sort, state persistence) | TL, FE, BE | 3 | Risk: URL/state handling is inconsistent | Current-state tech note + param inventory |
-| A2 | Data audit: confirm data model contains amenities, propertyType, reviewScore (nullable) and their sources | BE, Data Eng | 2 | Risk: missing/inconsistent supplier data | Field mapping doc + gap list |
-| A3 | Agree filter behavior: multi-select logic, unrated exclusion, empty state copy, clear-all behavior | PO, UX, TL | 3 | Dep: A1/A2 | Refined AC checklist |
-| A4 | Testing approach: define minimal combination matrix and what is automated (unit/integration/e2e) | QA, TL | 2 | Risk: combinatorial explosion | Test matrix + automation scope |
+| A1 | Review current search flow: request/response, pagination, sorting, URL params, caching | Tech Lead (TL), FE, BE | 3 | “Current state” doc (params, endpoints, state mgmt) | Impacts persistence requirement (all stories) |
+| A2 | Data audit: confirm `amenities[]`, `propertyType`, `reviewScore` (nullable) in API/DB; identify normalization needs | BE, Data/DB | 3 | Field mapping + gap list | Drives BE feasibility for 57139/57142/57146 |
+| A3 | Confirm filtering semantics with PO/QA: AND/OR rules, null handling, multi-select limits, default state | PO, TL, QA | 2 | Updated AC checklist + examples | esp. “unrated excluded when threshold set” |
+| A4 | Define test matrix (pairwise combinations) + automation split (unit/integration/e2e) | QA, TL | 2 | Test plan + matrix | Avoids combinatorial explosion |
 
 **Definition of Done (Analysis)**
-- Current search behavior documented (including sorting/pagination and state persistence).
-- Data availability confirmed or gaps captured with follow-ups.
+- Requirements clarified and written (including AND/OR/null rules).
+- Current state documented, including how paging/sort is triggered.
+- Data fields confirmed or follow-up tasks logged.
+- Test matrix agreed.
 
 ---
 
-### Phase B — Design
+### Phase 2 — Design
 
-| ID | Task | Owner | SP | Dependencies / Risks | Deliverables |
-|---|---|------:|---|---|
-| B1 | UX/UI design for filter panel sections, chips, clear-all, empty state, a11y requirements | UX, FE | 5 | Risk: component library constraints | Wireframes/spec |
-| B2 | API contract design for filters (query params + validation rules) | BE, TL | 3 | Dep: A3 | OpenAPI/Postman spec + examples |
-| B3 | BE query/index design for applying filters efficiently | BE, Data Eng | 3 | Risk: slow queries without indexes | Index/query plan |
-| B4 | FE architecture: filter state management and URL sync approach (apply vs live, debounce) | FE, TL | 3 | Dep: A1 | State diagram + implementation approach |
+**Milestone:** Approved UX + API contract + backend query approach.
+
+| Task ID | Task | Owner(s) | Est. (SP) | Outputs | Notes |
+|---|---|---|---:|---|---|
+| D1 | UX spec: filter panel sections + applied filter chips + clear-all + empty-state copy + accessibility | UX, FE | 5 | Wireframes/spec + a11y notes | Ensures consistent UX across 3 filters |
+| D2 | API contract: query params, validation, examples; confirm backward compatibility | BE, TL | 3 | Updated OpenAPI / contract doc | e.g. `amenities=wifi,breakfast`, `propertyType=hotel,villa`, `reviewScoreGte=8` |
+| D3 | BE query strategy + indexing: decide DB/ES filtering, cardinality, indexes, fallbacks | BE, Data/DB | 5 | Query plan + migration plan | Addresses performance risk |
+| D4 | FE architecture: state mgmt + URL sync + persistence across pagination/sorting + clear-filters behavior | FE, TL | 3 | State diagram + implementation notes | Decide “apply” vs “live update” + debounce |
 
 **Definition of Done (Design)**
-- UX spec approved.
-- API contract reviewed and version/backward compatibility plan agreed.
-- Query/index approach documented.
+- UX approved.
+- API contract reviewed by FE/BE/QA.
+- Query/index plan documented with performance assumptions.
+- FE state approach agreed (URL as source of truth).
 
 ---
 
-### Phase C — Development
+### Phase 3 — Development
 
-| ID | Task | Owner | SP | Dependencies / Risks | Deliverables |
-|---|---|---:|---|---|
-| C1 | BE: parse/validate new filter params (amenities, propertyType, reviewScoreGte) | BE | 5 | Dep: B2 | Updated controller/service param parsing |
-| C2 | BE: extend search query builder + add/adjust DB indexes if needed | BE, Data Eng | 8 | Dep: B3/C1 | Filtered queries + migrations (if any) |
-| C3 | FE: implement filter UI (Amenities multi-select, Property Type multi-select, Review Score threshold, Clear All) | FE | 8 | Dep: B1 | Filter panel components |
-| C4 | FE: wire filters to API + URL sync and persistence across sorting/pagination | FE | 5 | Dep: B4/C3/C1 | URL state + refetch logic |
-| C5 | FE: results behavior (empty state with clear-filters action, chips for applied filters) | FE | 3 | Dep: B1/C3 | Empty state + chips |
+**Milestone:** Filters implemented end-to-end behind feature flag.
+
+| Task ID | Task | Owner(s) | Est. (SP) | Outputs | Related Jira |
+|---|---|---|---:|---|---|
+| DEV1 | BE: implement param parsing + validation for `amenities`, `propertyType`, `reviewScoreGte` | BE | 5 | Controller/service updates; validation errors | 57139, 57142, 57146 |
+| DEV2 | BE: implement filtering logic in query layer (AND amenities; OR propertyType; score >= threshold; exclude null scores when threshold set) | BE, Data/DB | 8 | Search query updated + predicates | 57139, 57142, 57146 |
+| DEV3 | BE: performance work (indexes / query optimization / caching tweaks if needed) | BE, Data/DB | 5 | Migration(s) + perf notes | From D3 |
+| DEV4 | FE: create filter UI components (Amenities + Property Type + Review Score) | FE | 8 | Filter panel + controls | 57143, 57147 (+ UI part of 57138) |
+| DEV5 | FE: URL query param sync + persistence across pagination/sort; back/forward support | FE | 5 | Router/state integration | Required by all stories |
+| DEV6 | FE: applied-filter chips + Clear filters + no-results empty-state handling | FE | 3 | Chips + empty state CTA | Required by all stories |
+| DEV7 | Feature flag wiring (FE + BE) + config documentation | TL, FE, BE | 3 | Flags + README notes | Safe rollout |
 
 **Definition of Done (Development)**
-- All 3 filters work end-to-end in dev environment.
-- Filters persist across sorting/pagination via URL or equivalent state mechanism.
-- Empty state and clear-all behavior implemented.
+- All three filters function end-to-end in dev.
+- Filter state persists across pagination/sort.
+- Empty state shown with Clear filters.
+- Feature flags exist and default OFF in prod config.
+- Code review completed; lint/build passes.
 
 ---
 
-### Phase D — Testing
+### Phase 4 — Testing
 
-| ID | Task | Owner | SP | Dependencies / Risks | Deliverables |
-|---|---|---:|---|---|
-| D1 | BE unit tests: parsing + filter logic (AND amenities, OR property types, reviewScoreGte excludes null) | BE, TL | 3 | Dep: C1/C2 | CI unit coverage |
-| D2 | BE integration tests for search endpoint incl. empty results | BE, QA | 3 | Dep: C2 | Integration suite |
-| D3 | FE component tests for filter UI (select/clear/clear-all) | FE, QA | 3 | Dep: C3 | Component tests |
-| D4 | E2E tests (Cypress/Playwright): each filter + combinations + persistence + empty state | QA, FE | 8 | Dep: C4/C5 | E2E suite in CI (smoke + full) |
-| D5 | Non-functional checks: perf smoke (API latency with filters), a11y pass (form controls) | QA, TL | 3 | Risk: perf regressions | Perf notes + a11y report |
+**Milestone:** Automated coverage + QA sign-off on staging.
+
+| Task ID | Task | Owner(s) | Est. (SP) | Outputs |
+|---|---|---|---:|---|
+| T1 | BE unit tests: validation + filter predicate logic; null score exclusion rules | BE | 3 | Unit test suite |
+| T2 | BE integration tests: search endpoint with filters + combinations + empty-state response | BE, QA | 3 | Integration tests in CI |
+| T3 | FE component tests: select/clear multi-select, threshold select, clear-all | FE | 3 | Component tests |
+| T4 | E2E tests: each filter + persistence across pagination/sort + back/forward + no-results | QA, FE | 8 | E2E suite + CI job |
+| T5 | Non-functional: perf smoke (filtered vs unfiltered), a11y checks for controls | QA, TL | 3 | Perf/a11y report |
 
 **Definition of Done (Testing)**
-- Unit/integration tests green in CI.
+- CI green (unit + integration + UI tests).
 - E2E smoke passes on staging.
-- Perf and a11y checks completed with no P1 issues.
+- All acceptance criteria validated; no open P1/P2 defects.
+- Perf and a11y checks complete with no critical regressions.
 
 ---
 
-### Phase E — Deployment
+### Phase 5 — Deployment
 
-| ID | Task | Owner | SP | Dependencies / Risks | Deliverables |
-|---|---|---:|---|---|
-| E1 | Add feature flags for filter UI + backend param handling (safe rollout) | TL, BE, FE | 3 | Dep: C1–C5 | Flag config + docs |
-| E2 | Staging deploy + smoke verification (including migrations if any) | Ops, QA | 3 | Risk: migration downtime | Staging release notes + smoke results |
-| E3 | Prod deploy with gradual rollout (canary) + monitoring + rollback plan | Ops, TL | 3 | Dep: E2 | Release plan + monitoring checklist |
+**Milestone:** Controlled rollout to production with monitoring and rollback.
+
+| Task ID | Task | Owner(s) | Est. (SP) | Outputs |
+|---|---|---|---:|---|
+| DEP1 | Staging deployment + smoke verification; validate migrations (if any) | Ops/DevOps, QA | 3 | Staging release notes + smoke results |
+| DEP2 | Production rollout via feature flag (canary % → full); monitor errors/latency | Ops/DevOps, TL | 3 | Rollout checklist + dashboards |
+| DEP3 | Post-release verification + cleanup backlog (flag removal plan) | TL, FE, BE | 2 | Post-release report + follow-ups |
 
 **Definition of Done (Deployment)**
-- Feature flags verified on staging.
-- Prod rollout completed (canary → full) with monitoring green and rollback documented.
+- Staging verified; production released behind flag.
+- Monitoring confirms acceptable error rate and latency.
+- Rollback plan documented and validated.
+- Release notes published.
 
 ---
 
-## 2) Two-sprint plan (covers all 3 stories)
+## 2) Sprint plan covering all 3 User Stories across 2 sprints
 
-Recommended cadence: 2 sprints × 2 weeks.
+### Sprint 1 (2 weeks) — “Amenities + shared filter foundation”
+**Sprint Goal:** Deliver Amenities filter end-to-end and implement shared filter framework (URL persistence + combined logic scaffolding).
 
-### Sprint 1 — Foundation + Amenities (EPMCDMETST-57128)
-**Sprint goal:** deliver Amenities filter end-to-end and establish shared filter architecture.
+**Scope**
+- Complete EPMCDMETST-57138 (Amenities)
+- Implement URL/state persistence mechanism reused by other filters
 
-Planned scope:
-- Analysis/Design: A1–A3, B2–B4 (B1 can start in parallel)
-- Development: C1 (partial), C2 (amenities logic), C3 (amenities UI), C4 (URL sync baseline)
-- Testing: D1/D3 for amenities + light E2E smoke for persistence (subset of D4)
+**Sprint 1 backlog (suggested)**
+- Analysis: A1 (3), A2 (3), A3 (2), A4 (2) = **10 SP**
+- Design: D2 (3), D4 (3), start D1 (3/5) = **9 SP**
+- Dev: DEV1 (5) [amenities params], DEV2 (5/8 partial amenities query), DEV4 (5/8 amenities UI), DEV5 (3/5 baseline URL sync) = **18 SP**
+- Test: T1 (2/3 amenities), T3 (2/3 amenities UI), partial T4 smoke subset (3/8) = **7 SP**
 
-Exit criteria:
-- Amenities filter shipped behind feature flag to staging; QA sign-off for story 57128.
+**Sprint 1 total (approx): 44 SP**
 
-### Sprint 2 — Property Type + Review Score + hardening/release (EPMCDMETST-57129, EPMCDMETST-57130)
-**Sprint goal:** deliver remaining filters, full regression automation, and production-ready rollout.
+**Exit criteria**
+- Amenities filter meets AC including persistence and clear-filters empty state.
+- Available on staging behind feature flag for PO/QA review.
 
-Planned scope:
-- Design: finalize B1 (if not done)
-- Development: extend C2 for propertyType + reviewScore; complete C3/C5 for remaining UI/UX
-- Testing: complete D2–D5 and full D4 suite
-- Deployment: E1–E3
+### Sprint 2 (2 weeks) — “Property Type + Review Score + release hardening”
+**Sprint Goal:** Deliver Property Type and Review Score filters, finalize automation, and ship with controlled rollout.
 
-Exit criteria:
-- Stories 57129 and 57130 accepted; prod rollout completed or ready per release window.
+**Scope**
+- Complete EPMCDMETST-57141 (Property Type)
+- Complete EPMCDMETST-57145 (Review Score)
+- Full regression automation and deployment tasks
 
----
+**Sprint 2 backlog (suggested)**
+- Design: finish D1 (2/5), D3 (5) = **7 SP**
+- Dev: finish DEV2 (3), DEV3 (5), finish DEV4 (3), finish DEV5 (2), DEV6 (3), DEV7 (3) = **19 SP**
+- Test: finish T1 (1), T2 (3), finish T3 (1), finish T4 (5), T5 (3) = **13 SP**
+- Deploy: DEP1 (3), DEP2 (3), DEP3 (2) = **8 SP**
 
-## 3) Effort estimates (story points)
+**Sprint 2 total (approx): 47 SP**
 
-Story roll-up (approx.):
-- **EPMCDMETST-57128 (Amenities):** ~20 SP
-- **EPMCDMETST-57129 (Property Type):** ~13 SP
-- **EPMCDMETST-57130 (Review Score):** ~15 SP
-
-Total (plan-level, incl. deployment/testing hardening): ~55 SP across FE/BE/QA/Ops.
-
----
-
-## 4) Dependencies & risks
-
-### Key dependencies
-- Data availability and consistency for amenities/reviewScore (A2).
-- API contract alignment between FE and BE (B2).
-- URL state mechanism must not break existing links/SEO or sorting/pagination (A1/B4).
-
-### Major risks & mitigations
-- **Search performance regressions** with new filters → mitigate with indexes/query plan (B3) and perf smoke tests (D5).
-- **Combinatorial testing explosion** → mitigate with prioritized test matrix (A4) + E2E smoke/full split (D4).
-- **Supplier data quality gaps** → mitigate via whitelisting/normalization and clear behavior for missing values (A2/A3).
+**Exit criteria**
+- All three stories accepted on staging.
+- E2E suite stable in CI.
+- Production rollout completed (flagged) or ready pending release window.
 
 ---
 
-## 5) Definition of Done (per phase)
+## 3) Effort estimates per task (story points)
 
-- **Analysis DoD:** current behavior documented; data audit completed; filter logic agreed.
-- **Design DoD:** UX spec approved; API spec approved; query/index plan documented.
-- **Development DoD:** all 3 filters functional end-to-end; persistence works; empty state + clear-all present.
-- **Testing DoD:** CI green; E2E smoke on staging; perf/a11y checks done; no P1 defects open.
-- **Deployment DoD:** feature-flagged rollout completed; monitoring/rollback documented; release notes published.
+**By phase totals (planned):**
+- Analysis: 10 SP
+- Design: 14 SP
+- Development: 37 SP
+- Testing: 20 SP
+- Deployment: 8 SP
+
+**Overall total:** **~89 SP** (cross-functional, plan-level).
+
+---
+
+## 4) Dependencies and risks
+
+### Dependencies
+1. **Data completeness**: amenities/type/score must be present and consistent (A2).
+2. **API contract alignment** between FE and BE (D2).
+3. **URL-based persistence** must be compatible with existing sort/pagination (A1/D4).
+4. **Environments & observability**: staging dataset + dashboards/logs available for rollout.
+
+### Risks & mitigations
+| Risk | Impact | Likelihood | Mitigation |
+|---|---|---:|---|
+| Data quality gaps (missing amenities/score) | Incorrect filtering and user confusion | Medium | Normalize/whitelist values; define null-handling; log missing fields |
+| Performance regression from added predicates | Slow search results; timeouts | Medium | Index plan (D3/DEV3), perf smoke tests (T5), canary rollout (DEP2) |
+| E2E flakiness due to non-deterministic data | CI instability | Medium | Seed data/fixtures; stable selectors; smoke vs full suite |
+| UX complexity (AND vs OR) causes confusion | Usability issues | Low–Med | Clear labels/help text; chips summary; user testing if possible |
+| URL param bloat/encoding issues | Broken share links/routing | Low | Compact encoding; validate params; cap selections |
+
+---
+
+## 5) Definition of Done per phase
+
+### Analysis DoD
+- Documented current search behavior and constraints.
+- Data fields confirmed and sample payloads captured.
+- Filter semantics agreed and recorded.
+- Test matrix and automation scope approved.
+
+### Design DoD
+- UX spec approved (including a11y).
+- API contract finalized with examples/validation.
+- Query/index plan documented and reviewed.
+- FE URL/state approach agreed.
+
+### Development DoD
+- Filters implemented end-to-end in dev.
+- Logic matches rules (AND across categories; amenities AND; property type OR; score threshold excludes null).
+- Pagination/sorting preserve filter state.
+- Empty state + clear-filters UX present.
+- Feature flags implemented and documented.
+- Code review complete; build/lint pass.
+
+### Testing DoD
+- Unit/integration/UI tests pass in CI.
+- E2E tests cover AC + persistence + no-results.
+- No open P1/P2 defects.
+- Perf + a11y checks complete with no critical issues.
+
+### Deployment DoD
+- Staging deployed and validated.
+- Production canary rollout behind flag; monitoring OK.
+- Rollback plan verified.
+- Release notes + post-release verification completed.
